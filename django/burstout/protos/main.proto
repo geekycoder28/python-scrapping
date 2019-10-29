@@ -1,0 +1,167 @@
+syntax = "proto3";
+
+option objc_class_prefix = "RTG";
+
+package burstout;
+
+service MainInterface {
+  rpc user_space_scan(UUID) returns (stream Space) {}
+
+  rpc get_user_twilio_token(UUID) returns (JWTToken) {}
+
+  rpc get_user(UUID) returns (User) {}
+
+  rpc get_organization(UUID) returns (Organization) {}
+
+  rpc get_message(UUID) returns (Message) {}
+
+  rpc get_space(UUID) returns (Space) {}
+
+  rpc get_channel(UUID) returns (Channel) {}
+
+  rpc get_message_batch(BatchReq) returns (stream ScanResult) {}
+
+  rpc get_user_batch(Cursor) returns (stream ScanResult) {}
+
+  rpc channel_message_scan(Cursor) returns (stream Message) {}
+
+  rpc scan_messages_in_channel(Cursor) returns (stream ScanResult) {}
+
+  rpc scan_channels_in_space(Cursor) returns (stream ScanResult) {}
+
+  rpc event_stream(stream Event) returns (stream Event) {}
+
+  rpc channel_stream(stream Channel) returns (stream Channel) {}
+
+  rpc auth_login(Credentials) returns (AuthResult) {}
+
+  rpc auth_signup(Credentials) returns (AuthResult) {}
+}
+
+message UUID {
+  string value = 1;
+}
+
+message User {
+  string user_name = 1;
+  string phone_number = 2;
+  string name = 3;
+  UUID id = 4;
+  string creation_datetime = 5;
+  double creation_timestamp = 6;
+  string display_name = 7;
+  string image_url = 8;
+  repeated UUID connections = 9;
+  repeated UUID organizations = 10;
+  string biography = 11;
+  UUID space  = 12;
+  UUID home_room  = 13;
+}
+
+message Organization {
+  string entity_name = 1;
+  string phone_number = 2;
+  string display_name = 3;
+  string id = 4;
+  string creation_datetime = 5;
+  double creation_timestamp = 6;
+  repeated UUID members = 10;
+  string description = 11;
+  string image_url = 12;
+  UUID space  = 13;
+}
+
+message Credentials {
+  string identifier = 1;
+  string password = 2;
+}
+
+
+message AuthResult {
+  User user = 1;
+  bool valid = 2;
+}
+
+message JWTToken {
+  UUID id = 1;
+  int32 expiry_time = 2;
+  string jwt = 3;
+}
+
+message Channel {
+  UUID id = 1;
+  string creation_datetime = 2;
+  double creation_timestamp = 3;
+  repeated UUID members = 4;
+  UUID preview_id = 5;
+  UUID space_id = 7;
+  UUID request_id = 8;
+  int32 message_count = 9;
+  string image_url = 10;
+  string channel_name = 11;
+}
+
+message Space {
+  UUID id = 1;
+  double creation_timestamp = 2;
+  string space_name = 3;
+  string display_name = 4;
+  bool is_default = 6;
+  repeated UUID channels = 7;
+}
+
+message Source {
+  UUID id = 1;
+}
+
+message Message {
+  UUID id = 1;
+  UUID source_id = 2;
+  UUID channel_id = 3;
+  string body = 4;
+  string creation_datetime = 5;
+  double creation_timestamp = 6;
+  UUID request_id = 8;
+}
+
+message Cursor {
+  UUID entity_id = 1;
+  int32 index = 2;
+  int32 length = 3;
+  int32 limit = 4;
+  repeated UUID id_list = 5;
+}
+
+message BatchReq {
+  repeated UUID id_list = 1;
+}
+
+
+message ScanResult {
+  int32 start_index = 1;
+  int32 end_index = 2;
+  repeated Message messages = 3;
+  repeated Channel channels = 4;
+  repeated User users = 5;
+}
+
+message Event {
+  UUID id = 1;
+  UUID request_id = 2;
+  string type = 3;
+  UUID room_id = 4;
+  UUID user_id = 5;
+  UUID source_id = 6;
+  string body = 7;
+  Message message = 8;
+  repeated UUID members = 9;
+  UUID space_id = 10;
+  string channel_name = 11;
+  Channel channel = 12;
+}
+
+
+
+message MessageList {
+  repeated Message messages = 1;
+}
