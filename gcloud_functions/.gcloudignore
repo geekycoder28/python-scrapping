@@ -1,0 +1,14 @@
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.pyc
+*.o
+*.so
+*.pyc
+
+# Python Cache directory
+###################
+**/__pycache__*

@@ -48,6 +48,7 @@ pb2/
 # Python Caches #
 ######################
 *__pycache__*
+*webdrivers*
 *migrations*
 
 # Logs and databases #
