@@ -60,6 +60,88 @@ def getsizes(img_url):
         "width" : 0
     }
 
+def get_link_info(url, ignore_cache=False):
+    print("Getting Link info url: ", url)
+    cached_url_info = red.hget("articles", url)
+
+    if ignore_cache:
+        print("Ignoring Cache")
+    elif cached_url_info:
+        cached_url_info = json.loads(cached_url_info)
+        print("Found url in cache: ")
+        return (jsonify(cached_url_info), 200, headers)
+    else:
+        print("Url not found in cache: ")
+
+
+
+    try:
+        source = urllib.request.urlopen(url).read()
+    except HTTPError as e:
+        result = requests.get(url)
+        source = result.content
+
+    soup = BeautifulSoup(source, 'lxml')
+
+    link_info = {
+        "url" : url,
+        "title" : soup.title.string,
+        "last_visit_time" : int(time.time())
+    }
+
+    texts = soup.findAll(text=True)
+    visible_texts = filter(tag_visible, texts)
+
+    visible_texts= [t.strip() for t in visible_texts]
+    visible_texts = list(filter(lambda t: len(t) > 128, visible_texts))
+    link_info["body_text"] = visible_texts
+
+    largest_image_size = 0
+    largest_image_url = ""
+    primary_image_props = {}
+    logo = {}
+
+
+    with webdriver.Chrome("./webdrivers/chromedriver", chrome_options=chrome_options) as driver:
+
+        driver.get(url)
+
+        with open('page.html', 'w') as f:
+            f.write(driver.page_source)
+
+        images = driver.find_elements_by_tag_name('img')
+        for image in images:
+            img_url = image.get_attribute('src')
+
+            image_props = getsizes(img_url)
+
+            img_area = image_props["height"] * image_props["width"]
+
+            if "url" not in logo and "logo" in img_url.lower():
+                logo = {
+                    "url" : img_url,
+                    "height" : image_props["height"],
+                    "width" : image_props["width"]
+                }
+
+            if img_area > largest_image_size:
+                largest_image_size = img_area
+                largest_image_url = img_url
+                primary_image_props = {
+                    "url" : img_url,
+                    "height" : image_props["height"],
+                    "width" : image_props["width"]
+                }
+
+
+
+    link_info["image"] = primary_image_props
+    link_info["logo"] = logo
+
+    red.hset("articles", url, json.dumps(link_info))
+    print("Wrote url to cache: ", url)
+    return link_info
+
 def process_link(request):
     """HTTP Cloud Function.
     Args:
@@ -94,87 +176,11 @@ def process_link(request):
 
         if request_json and 'url' in request_json:
             url = request_json['url']
-            print("Processing url: ", url)
-            cached_url_info = red.hget("articles", url)
+
             ignore_cache = "ignore_cache" in request_json and request_json['ignore_cache'] in ["True", "true", "1", "T", "t", True]
 
-            if ignore_cache:
-                print("Ignoring Cache")
-            elif cached_url_info or not ignore_cache:
-                cached_url_info = json.loads(cached_url_info)
-                print("Found url in cache: ")
-                return (jsonify(cached_url_info), 200, headers)
-            else:
-                print("Url not found in cache: ")
+            link_info = get_link_info(url, ignore_cache)
 
-
-
-            try:
-                source = urllib.request.urlopen(url).read()
-            except HTTPError as e:
-                result = requests.get(url)
-                source = result.content
-
-            soup = BeautifulSoup(source, 'lxml')
-
-            link_info = {
-                "url" : url,
-                "title" : soup.title.string,
-                "last_visit_time" : int(time.time())
-            }
-
-            texts = soup.findAll(text=True)
-            visible_texts = filter(tag_visible, texts)
-
-            visible_texts= [t.strip() for t in visible_texts]
-            visible_texts = list(filter(lambda t: len(t) > 128, visible_texts))
-            link_info["body_text"] = visible_texts
-
-            largest_image_size = 0
-            largest_image_url = ""
-            primary_image_props = {}
-            logo = {}
-
-
-            with webdriver.Chrome("./webdrivers/chromedriver", chrome_options=chrome_options) as driver:
-
-                driver.get(url)
-
-                # for tag in soup.findAll("img"):
-                #     img_url = urljoin(url, tag['src'])
-
-
-                images = driver.find_elements_by_tag_name('img')
-                for image in images:
-                    img_url = image.get_attribute('src')
-
-                    image_props = getsizes(img_url)
-
-                    img_area = image_props["height"] * image_props["width"]
-
-                    if "url" not in logo and "logo" in img_url.lower():
-                        logo = {
-                            "url" : img_url,
-                            "height" : image_props["height"],
-                            "width" : image_props["width"]
-                        }
-
-                    if img_area > largest_image_size:
-                        largest_image_size = img_area
-                        largest_image_url = img_url
-                        primary_image_props = {
-                            "url" : img_url,
-                            "height" : image_props["height"],
-                            "width" : image_props["width"]
-                        }
-
-
-
-            link_info["image"] = primary_image_props
-            link_info["logo"] = logo
-
-            red.hset("articles", url, json.dumps(link_info))
-            print("Wrote url to cache: ", url)
             return (jsonify(link_info), 200, headers)
 
 

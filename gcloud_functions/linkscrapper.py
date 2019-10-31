@@ -14,6 +14,7 @@ import sys, traceback
 from bs4.element import Comment
 import time
 from google.cloud import firestore
+from main import get_link_info
 
 red = redis.Redis(host='localhost', port=6379, db=0)
 firedb = firestore.Client()
@@ -42,9 +43,6 @@ links_to_visit = set([
     # "http://www.tigraionline.com/",
     # "https://www.ezega.com/",
     # "https://punchng.com/",
-    "https://www.theguardian.com/commentisfree/2019/oct/26/what-happened-when-alexandria-ocasio-cortez-came-face-to-face-with-facebooks-mark-zuckerberg",
-    "http://www.swahilihub.com/habari/MAKALA/Tunaipongeza-Serikali-mpango-mpya-wa-Tahasusi/1310220-5050626-lot1hwz/index.html",
-    "https://www.nation.co.ke/news/politics/Duale-wants-MPs-elect-President/1064-5328310-ct5dusz/index.html"
 ])
 
 def tag_visible(element):
@@ -75,67 +73,9 @@ def dfs_visit(base_url, depth, max_depth, visited_links):
         return
 
     try:
-        print(base_url)
-        if base_url not in visited_links:
-            visited_links[base_url] = {
-                "visit_count" : 0
-            }
-
-        try:
-            source = request.urlopen(base_url).read()
-        except HTTPError as e:
-            result = requests.get(base_url)
-            source = result.content
-
-        soup = BeautifulSoup(source,'lxml')
-
-        link_info = {
-            "url" : base_url,
-            "title" : soup.title.string,
-        }
-
-        texts = soup.findAll(text=True)
-        visible_texts = filter(tag_visible, texts)
-
-        visible_texts= [t.strip() for t in visible_texts]
-        visible_texts = list(filter(lambda t: len(t) > 128, visible_texts))
-        link_info["body_text"] = visible_texts
-
-        largest_image_size = 0
-        largest_image_url = ""
-        image = {}
-        logo = {}
-        for tag in soup.findAll("img"):
-
-            img_url = urljoin(base_url, tag['src'])
-            image_props = getsizes(img_url)
-
-            img_area = image_props["height"] * image_props["width"]
-
-            if "url" not in logo and "logo" in img_url.lower():
-                logo = {
-                    "url" : img_url,
-                    "height" : image_props["height"],
-                    "width" : image_props["width"]
-                }
-
-            if img_area > largest_image_size:
-                largest_image_size = img_area
-                largest_image_url = img_url
-                image = {
-                    "url" : img_url,
-                    "height" : image_props["height"],
-                    "width" : image_props["width"]
-                }
-
-        link_info["image"] = image
-        link_info["logo"] = logo
-
-        pprint(link_info)
+        link_info = get_link_info(base_url)
         return visited_links
-
-
-
+        
         visited_links[base_url]["last_visit_time"] = int(time.time())
         visited_links[base_url]["visit_count"] += 1
 
@@ -181,9 +121,10 @@ def dfs_visit(base_url, depth, max_depth, visited_links):
     return visited_links
 
 
-visited_links = {}
-for base_url in links_to_visit:
-    visited_links = dfs_visit(base_url, 0, 1, visited_links)
+if __name__ == '__main__':
+    visited_links = {}
+    for base_url in links_to_visit:
+        visited_links = dfs_visit(base_url, 0, 1, visited_links)
 
 
 print(len(visited_links))
