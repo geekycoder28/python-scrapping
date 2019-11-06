@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: news-scrappers
+  labels:
+    app: news-scrappers
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: news-scrappers
+  template:
+    metadata:
+      labels:
+        app: news-scrappers
+    spec:
+      containers:
+        - name: news-scrappers
+          image: eu.gcr.io/proxima-media/news_scrapper:latest

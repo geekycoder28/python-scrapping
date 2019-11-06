@@ -18,7 +18,7 @@ from PIL import Image
 from flask import jsonify
 from pprint import pprint
 from bs4.element import Comment
-
+import signal
 
 dirpath = os.getcwd()
 driver_binary_path = os.path.join(dirpath, "webdrivers")
@@ -36,6 +36,22 @@ REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
 
 red = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
+
+class TimeoutError(Exception):
+    pass
+
+class timeout:
+    def __init__(self, seconds=1, error_message='Timeout'):
+        self.seconds = seconds
+        self.error_message = error_message
+    def handle_timeout(self, signum, frame):
+        raise TimeoutError(self.error_message)
+    def __enter__(self):
+        signal.signal(signal.SIGALRM, self.handle_timeout)
+        signal.alarm(self.seconds)
+    def __exit__(self, type, value, traceback):
+        signal.alarm(0)
+
 
 def tag_visible(element):
     if element.parent.name in ['style', 'script', 'head', 'title', 'meta', '[document]']:
@@ -69,7 +85,7 @@ def get_link_info(url, ignore_cache=False):
     elif cached_url_info:
         cached_url_info = json.loads(cached_url_info)
         print("Found url in cache: ")
-        return (jsonify(cached_url_info), 200, headers)
+        return cached_url_info
     else:
         print("Url not found in cache: ")
 
@@ -85,7 +101,7 @@ def get_link_info(url, ignore_cache=False):
 
     link_info = {
         "url" : url,
-        "title" : soup.title.string,
+        "title" : str(soup.title.string),
         "last_visit_time" : int(time.time())
     }
 
@@ -104,10 +120,15 @@ def get_link_info(url, ignore_cache=False):
 
     with webdriver.Chrome("./webdrivers/chromedriver", chrome_options=chrome_options) as driver:
 
-        driver.get(url)
+        print("Start loading url", url)
+        try:
+            with timeout(seconds=15):
+                driver.get(url)
+        except TimeoutError as te:
+            print("Timeout Error for url", url)
+            return {}
+        print("Done loading url", url)
 
-        with open('page.html', 'w') as f:
-            f.write(driver.page_source)
 
         images = driver.find_elements_by_tag_name('img')
         for image in images:
@@ -117,7 +138,7 @@ def get_link_info(url, ignore_cache=False):
 
             img_area = image_props["height"] * image_props["width"]
 
-            if "url" not in logo and "logo" in img_url.lower():
+            if img_url and "url" not in logo and "logo" in img_url.lower():
                 logo = {
                     "url" : img_url,
                     "height" : image_props["height"],

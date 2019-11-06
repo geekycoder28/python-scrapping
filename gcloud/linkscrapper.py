@@ -10,40 +10,48 @@ from urllib.error import HTTPError
 import requests
 import redis
 import json
+import os
 import sys, traceback
 from bs4.element import Comment
 import time
 from google.cloud import firestore
 from main import get_link_info
 
-red = redis.Redis(host='localhost', port=6379, db=0)
+REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
+
+red = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
+
 firedb = firestore.Client()
 
 coll = firedb.collection(u'articles')
-links_to_visit = set([
+links_to_visit = [
     "https://www.nation.co.ke/",
     "https://www.thecitizen.co.tz/",
-    "https://www.monitor.co.ug/",
+    # "https://www.monitor.co.ug/",
     # "https://www.aljazeera.com",
     # "https://www.newvision.co.ug/",
-    # "https://www.standardmedia.co.ke/",
+    "https://www.standardmedia.co.ke/",
     # "http://www.swahilihub.com/",
-    # "https://www.the-star.co.ke/",
+    "https://www.the-star.co.ke/",
     # "https://www.bbc.com/",
-    # "https://www.capitalfm.co.ke/",
+    "https://www.capitalfm.co.ke/",
     # "https://www.theguardian.com/",
     # "https://www.thesouthafrican.com/",
     # "https://www.timeslive.co.za/",
     # "https://www.iol.co.za/",
     # "https://www.sowetanlive.co.za/",
-    # "http://nairobiwire.com/",
+    "http://nairobiwire.com/",
     # "https://allafrica.com/",
     # "https://www.nytimes.com/",
     # "https://borkena.com/",
     # "http://www.tigraionline.com/",
     # "https://www.ezega.com/",
     # "https://punchng.com/",
-])
+]
+
+shuffle(links_to_visit)
+# links_to_visit = set(links_to_visit)
 
 def tag_visible(element):
     if element.parent.name in ['style', 'script', 'head', 'title', 'meta', '[document]']:
@@ -68,39 +76,39 @@ def getsizes(img_url):
         "width" : 0
     }
 
-def dfs_visit(base_url, depth, max_depth, visited_links):
-    if base_url in visited_links or depth > max_depth:
+def dfs_visit(url, depth, max_depth):
+
+    if depth > max_depth:
+        return
+    crawled_link = red.hget("crawled-links", url)
+    if crawled_link:
         return
 
     try:
-        link_info = get_link_info(base_url)
-        return visited_links
-        
-        visited_links[base_url]["last_visit_time"] = int(time.time())
-        visited_links[base_url]["visit_count"] += 1
+        try:
+            source = request.urlopen(url).read()
+        except HTTPError as e:
+            result = requests.get(url)
+            source = result.content
 
-        if len(visible_texts_large) > 2:
-            visited_links[base_url]["has_text"] = True
-
-            link_elem = {
-                "url" : base_url,
-                "last_visit_time" : int(time.time())
-            }
-
-            coll.add(link_elem)
-            red.hset("articles", base_url, json.dumps(link_elem))
-
+        soup = BeautifulSoup(source, 'lxml')
         links = list(soup.find_all('a'))
         shuffle(links)
 
+
+        print("Found {l} links in page {u}".format(l=len(links), u=url))
+
         count = 10
-        for url in links:
+        for child_url in links:
+
+
+
             count -=1
             if count < 0:
                 pass
                 # continue
 
-            href = url.get('href')
+            href = child_url.get('href')
             child_url = urljoin(base_url, href)
             url_components = urlparse(child_url)
 
@@ -112,19 +120,31 @@ def dfs_visit(base_url, depth, max_depth, visited_links):
             if not base_url.startswith(child_base_url):
                 continue
 
-            dfs_visit(child_url, depth + 1, max_depth, visited_links)
+
+            dfs_visit(child_url, depth + 1, max_depth)
+
+
+        link_info = get_link_info(url)
+
+        for k, v in link_info.items():
+            if isinstance(v, (str, dict, list, int)):
+                continue
+            print(type(k), type(v),k, v)
+        # pprint(link_info)
+        coll.add(link_info)
+        red.hset("crawled-links", url, json.dumps(link_info))
 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
         print(e)
 
-    return visited_links
+    return
 
 
 if __name__ == '__main__':
-    visited_links = {}
-    for base_url in links_to_visit:
-        visited_links = dfs_visit(base_url, 0, 1, visited_links)
-
-
-print(len(visited_links))
+    pprint(links_to_visit)
+    while True:
+        for base_url in links_to_visit[0:4]:
+            print("Attempt to crawl", base_url)
+            dfs_visit(base_url, 0, 4)
+        red.delete("crawled-links")

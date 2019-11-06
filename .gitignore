@@ -67,3 +67,6 @@ pb2/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Permissions
+*proxima-media-*.json
