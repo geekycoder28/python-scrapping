@@ -40,7 +40,7 @@ def publish():
             "time" : strftime("%Y-%m-%d %H:%M:%S", gmtime()),
             "url" : url,
             "depth" : 0,
-            "max_depth" : 1,
+            "max_depth" : 3,
             "ignore_cache": True
         }
 

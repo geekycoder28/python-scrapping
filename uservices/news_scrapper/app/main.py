@@ -270,8 +270,16 @@ def callback(message):
 
         link_info = get_link_info(url, ignore_cache)
 
-        if len(link_info["body_text_256"]) > 3:
-            coll.add(link_info)
+        if len(link_info["body_text"]) > 2:
+            docs = coll.where(u'url', u'==', url).stream()
+
+            if len(list(docs)):
+                print("Found existing document. Updating : ", url)
+                for doc in docs:
+                    coll.document(doc.id).update(link_info)
+            else:
+                coll.add(link_info)
+
         red.hset("crawled-links", url, json.dumps(link_info))
         message.ack()
     except Exception as e:
