@@ -17,6 +17,9 @@ pb2/
 ###################
 *.xlsx
 *.csv
+.env
+.vscode/
+env/
 
 # Django Migrations and caches #
 ###################
