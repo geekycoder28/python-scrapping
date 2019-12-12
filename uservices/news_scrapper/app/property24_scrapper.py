@@ -2,7 +2,7 @@ import os
 import requests
 from dotenv import load_dotenv
 from pathlib import Path
-from bs4 import BeautifulSoup 
+from bs4 import BeautifulSoup
 import re
 import pymongo
 from pymongo import MongoClient
@@ -23,32 +23,78 @@ PROPERTY_URL = os.getenv("PROPERTY_URL")
 propert_request = requests.get(PROPERTY_URL)
 
 # Pass the HTML text to an HTML tree-based structure
-soup = BeautifulSoup(propert_request.content, 'html5lib') 
+soup = BeautifulSoup(propert_request.content, 'html5lib')
+properties_container1 = soup.find_all(
+    'div', class_='p24_promotedTile')
+data_container1 = []
+for element in properties_container1:
+    property_link = element.a['href']
+    property_agent = element.find('div', class_="p24_promotedImage").img['src']
+    property_price = element.find(
+        'div', class_='p24_price').text.strip().replace("   ", '')
+    property_location = element.find('span', class_='p24_location').text
+    property_bedrooms = element.find(
+        'span', class_='p24_featureDetails', title='Bedrooms').span.text
+    property_bathrooms = element.find(
+        'span', class_='p24_featureDetails', title='Bathrooms').span.text
+    property_images = element.find('img', class_='js_rollover_target')['src']
 
-links_array = []
-for link in soup.find_all('a', href=True):
-    links_array.append(link['href'])
-
-# Remove the javascript links
-filtered_links = []
-for item in links_array:
-    if 'javascript' in item:
-        filtered_links.append(item)
-
-# compare the both of the array and get the difference
-diff = list(set(links_array) - set(filtered_links))
-
-final_array = []
-# Check for the links that doesn't have the base url.
-for item in diff:
-    element = re.search(r"^/", item)
-    if element:
-        new_value = 'https://www.property24.com' + item
-        final_array.append(new_value)
+    property_type = ''
+    if '/for-sale' in property_link:
+        property_type = 'for sale'
+    elif '/to-rent' in property_link:
+        property_type = 'for rent'
     else:
-        pass
+        property_type = 'land'
 
-# Insert the data in database.
-table.insert({"links": final_array})
+    data = {
+        'link': 'https://www.property24.com' + property_link,
+        'type': property_type,
+        'agent': property_agent,
+        'images': property_images,
+        'price': property_price,
+        'location': property_location,
+        'bedrooms': property_bedrooms,
+        'bathrooms': property_bathrooms,
+    }
+
+    data_container1.append(data)
+
+properties_container2 = soup.find_all(
+    'div', class_='p24_regularTile')
+data_container2 = []
+for element in properties_container2:
+    property_link = element.a['href']
+    property_images = element.find('img', class_='js_rollover_target js_rollover_default js_P24_listingImage js_lazyLoadImage')['lazy-src']
+    property_price = element.find('span', class_='p24_price').text.strip().replace("   ", '')
+    property_bedrooms = element.find('span', class_ = 'p24_title').text[:2]
+    property_location = element.find('span', class_ = 'p24_location').text
+    property_bathrooms = element.find('span', class_='p24_featureDetails', title='Bathrooms').span.text
+    property_agent = element.find('span', class_ ='p24_content').img['src']
+
+    property_type = ''
+    if '/for-sale' in property_link:
+        property_type = 'for sale'
+    elif '/to-rent' in property_link:
+        property_type = 'for rent'
+    else:
+        property_type = 'land'
+
+    data = {
+        'link': 'https://www.property24.com' + property_link,
+        'type': property_type,
+        'agent': property_agent,
+        'images': property_images,
+        'price': property_price,
+        'location': property_location,
+        'bedrooms': property_bedrooms,
+        'bathrooms': property_bathrooms,
+    }
+
+    data_container2.append(data)
 
 
+for item in data_container1:
+    data_container2.append(item)
+
+table.insert({"links": data_container2})
