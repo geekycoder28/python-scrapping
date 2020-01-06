@@ -16,7 +16,7 @@ import firebase_admin
 import google.cloud
 from firebase_admin import credentials, firestore
 
-FIREBASE_PROJECT_ID = os.getenv("PROPERTY_URL")
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")
 cred = credentials.Certificate('../../../jacaranda-app-firebase-adminsdk.json')
 
 default_app = firebase_admin.initialize_app(cred, {
@@ -138,7 +138,7 @@ def scraper(root, steps):
     
     print('now', final_property_array)
         
-    return []
+    return final_property_array
 
 def scrape_step(root, steps):
 
@@ -166,7 +166,6 @@ def scrape_step(root, steps):
 
         except Exception as e:
             print('error', e)
-
     return result_urls
 
 def check_property_exists():
@@ -179,86 +178,77 @@ def check_property_exists():
 
 def scrap_data(url):
 
-    # links_array = scraper(url, 2)
-    # linka = links_array[1]
-    # print('linkkkka', linka)
-
     try:
-        links = ['/vacant-land-plot-for-sale-in-kibos-108249304', '/vacant-land-plot-for-sale-in-rabuor-107811036', '/vacant-land-plot-for-sale-in-rabuor-101756435', '/apartment-flat-for-sale-in-lolwe-101736179', '/apartment-flat-for-sale-in-lolwe-107854895', '/3-bedroom-house-for-sale-in-kenya-re-107887944', '/3-bedroom-house-for-sale-in-kenya-re-101732776', '/apartment-flat-for-sale-in-dunga-101750317', '/apartment-flat-for-sale-in-dunga-107903897', '/vacant-land-plot-for-sale-in-chulaimbo-107943094', '/vacant-land-plot-for-sale-in-chulaimbo-101743318', '/commercial-property-for-sale-in-eldoret-cbd-108012966', '/3-bedroom-house-for-sale-in-eldoret-cbd-101758972', '/3-bedroom-house-for-sale-in-eldoret-cbd-107199347', '/3-bedroom-apartment-flat-for-sale-in-eldoret-cbd-106810880', '/4-bedroom-house-for-sale-in-eldoret-cbd-106607359', '/4-bedroom-house-for-sale-in-eldoret-cbd-108240733', '/5-bedroom-house-for-sale-in-eldoret-cbd-108264708', '/4-bedroom-house-for-sale-in-eldoret-cbd-108110165', '/3-bedroom-house-for-sale-in-eldoret-cbd-106611790']
-
+        
+        links = scraper(url, 2)
 
         all_data = []
         for link in links:
 
-            # if len(link) < 3:
-            #     pass
-
             property_request = requests.get(url + link)
             soup = BeautifulSoup(property_request.content, 'html5lib')
             get_individual_property = soup.find_all('div', class_ = 'containerWrap')
-            properties_pres = []
             data_dict = dict()
             current_properties = check_property_exists()
 
-            for element in get_individual_property:
-
-                id_section = uuid.uuid4().hex
-                data_dict['uuid'] = id_section
-                price_section = element.find('div', class_='pull-left sc_listingPrice primaryColor')
-                if price_section is not None:
-                    price = element.find('div', class_='pull-left sc_listingPrice primaryColor').text.strip().replace("   ", '')
-                    data_dict['price'] = price
-                
-                price_range_dev = element.find('div', class_ = 'pull-left sc_listingPrice sc_listingPriceDevelopments primaryColor')
-                if price_range_dev is not None:
-                    price_section = element.find('div', class_ = 'pull-left sc_listingPrice sc_listingPriceDevelopments primaryColor')
-                    price = price_section.find('span', class_ = None).text
-                    data_dict['price'] = price
-
-                title_section = element.find('div', class_ = 'pull-left sc_listingAddress')
-                if title_section is not None:
-                    title = element.find('div', class_ = 'pull-left sc_listingAddress').h1.text
-                    data_dict['title'] = title
-
-                address_section = element.find('div', class_ = 'pull-left sc_listingAddress')
-                if address_section is not None:
-                    address = element.find('div', class_ = 'pull-left sc_listingAddress').p.text
-                    data_dict['address'] = address
-                    address_array = address.split(',')
-                    data_dict['district'] = address_array[-1]
-
-                images_scraper = element.find_all('img', class_ = 'mainImage')
-                if images_scraper:
-                    images = []
-                    for item in images_scraper:
-                        images.append(item['data-original'])
-                    data_dict['images'] = images
-
-                property_details_section = element.find('div', class_ = 'sc_listingDetailsText')
-                if property_details_section is not None:
-                    property_details = element.find('div', class_ = 'sc_listingDetailsText').text
-                    data_dict['property_details'] = property_details
-                
-                get_property_info = element.find_all('div', class_ = 'detailItem sc_listingSummaryRow')
-                
-                if get_property_info:
-                    property_info = []
-                    for item in get_property_info:
-                        data = {
-                            item.find('div', class_ = 'detailItemName').text.strip().replace("   ", '') : item.find('div', class_ = 'detailItemValues').text.strip().replace("   ", '')
-                        }
-                        property_info.append(data)
-                    data_dict['property_info'] = property_info
-            all_data.append(data_dict)
-            # doc_ref.document().set(data_dict)
-            # if create_index(es, 'properties'):
-            #     store = store_data(es, 'properties', data)
-            #     print('Data Indexed successfully', store)
-
-            if not any(item.get('title', None) == data_dict['title'] for item in current_properties):
-                doc_ref.document().set(data_dict)
+            if len(get_individual_property) == 0:
+                sleep(2)
             else:
-                print('the property already exists')
+                for element in get_individual_property:
+
+                    id_section = uuid.uuid4().hex
+                    data_dict['uuid'] = id_section
+                    price_section = element.find('div', class_='pull-left sc_listingPrice primaryColor')
+                    if price_section is not None:
+                        price = element.find('div', class_='pull-left sc_listingPrice primaryColor').text.strip().replace("   ", '')
+                        data_dict['price'] = price
+                    
+                    price_range_dev = element.find('div', class_ = 'pull-left sc_listingPrice sc_listingPriceDevelopments primaryColor')
+                    if price_range_dev is not None:
+                        price_section = element.find('div', class_ = 'pull-left sc_listingPrice sc_listingPriceDevelopments primaryColor')
+                        price = price_section.find('span', class_ = None).text
+                        data_dict['price'] = price
+
+                    title_section = element.find('div', class_ = 'pull-left sc_listingAddress')
+                    if title_section is not None:
+                        title = element.find('div', class_ = 'pull-left sc_listingAddress').h1.text
+                        data_dict['title'] = title
+
+                    address_section = element.find('div', class_ = 'pull-left sc_listingAddress')
+                    if address_section is not None:
+                        address = element.find('div', class_ = 'pull-left sc_listingAddress').p.text
+                        data_dict['address'] = address
+                        address_array = address.split(',')
+                        data_dict['district'] = address_array[-1]
+
+                    images_scraper = element.find_all('img', class_ = 'mainImage')
+                    if images_scraper:
+                        images = []
+                        for item in images_scraper:
+                            images.append(item['data-original'])
+                        data_dict['images'] = images
+
+                    property_details_section = element.find('div', class_ = 'sc_listingDetailsText')
+                    if property_details_section is not None:
+                        property_details = element.find('div', class_ = 'sc_listingDetailsText').text
+                        data_dict['property_details'] = property_details
+                    
+                    get_property_info = element.find_all('div', class_ = 'detailItem sc_listingSummaryRow')
+                    
+                    if get_property_info:
+                        property_info = []
+                        for item in get_property_info:
+                            data = {
+                                item.find('div', class_ = 'detailItemName').text.strip().replace("   ", '') : item.find('div', class_ = 'detailItemValues').text.strip().replace("   ", '')
+                            }
+                            property_info.append(data)
+                        data_dict['property_info'] = property_info
+                all_data.append(data_dict)
+
+                if not any(item.get('title', None) == data_dict['title'] for item in current_properties):
+                    doc_ref.document().set(data_dict)
+                else:
+                    print('the property already exists')
 
         return []
     
