@@ -3,17 +3,32 @@ import requests
 from dotenv import load_dotenv
 from pathlib import Path
 from bs4 import BeautifulSoup
+from selenium import webdriver
 import re
 import json
 import logging
 from pprint import pprint
 from time import sleep
 from elasticsearch import Elasticsearch
+import uuid
+import time
+import firebase_admin
+import google.cloud
+from firebase_admin import credentials, firestore
+
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")
+cred = credentials.Certificate('../../../jacaranda-app-firebase-adminsdk.json')
+
+default_app = firebase_admin.initialize_app(cred, {
+  'projectId': FIREBASE_PROJECT_ID,
+})
+
+firestore_client = firestore.client()
+doc_ref = firestore_client.collection('properties')
 
 def search(es_object, index_name, search):
     response = es_object.search(index=index_name, body=search)
     pprint(response)
-
 
 def create_index(es_object, index_name):
     created = False
@@ -78,91 +93,167 @@ def connect_el():
 env_path = Path('../../../') / '.env'
 load_dotenv(dotenv_path=env_path)
 
-def scrap_data(URL):
+def scraper(root, steps):
+    urls = [root]
+    visited = [root]
+    counter = 0
+    
+    while counter < steps:
+        step_url = scrape_step(urls, steps)
+        urls = []
+        for u in step_url:
+            if u not in visited:
+                urls.append(u)
+                visited.append(u)
+        counter += 1
+
+    final_property_array = []
+    for link in visited:
+        property_request = requests.get(PROPERTY_URL + link)
+        soup = BeautifulSoup(property_request.content, 'html5lib')
+        get_individual_property = soup.find_all('div', class_ = None)
+        
+        display_links = []
+        for item in get_individual_property:
+            link_tags = item.select('a')
+            links = [pt.get('href') for pt in link_tags]
+            # print('links', links)
+
+            if len(links) > 3:
+                display_links = links
+            else:
+                pass
+        
+        filter_agency_links = []
+        for item in display_links:
+            if 'javascript' in item:
+                filter_agency_links.append(item)
+            if 'estate-agency' in item:
+                filter_agency_links.append(item)
+
+        property_links = list(set(display_links) - set(filter_agency_links))
+
+        
+        final_property_array.extend(property_links)
+    
+    print('now', final_property_array)
+        
+    return final_property_array
+
+def scrape_step(root, steps):
+
+    result_urls = []
+    for url in root:
+        try:
+
+            if url == PROPERTY_URL:
+                property_request = requests.get(url)
+                soup = BeautifulSoup(property_request.content, 'html5lib')
+                links_sections = soup.find_all('div', class_ = 'col-xs-6')
+                for item in links_sections:
+                    link_tags = item.select('a')
+                    links = [pt.get('href') for pt in link_tags]
+                    result_urls = links
+            
+            else:
+                property_request = requests.get(PROPERTY_URL + url)
+                soup = BeautifulSoup(property_request.content, 'html5lib')
+                footer_links_section = soup.find_all('div', class_ = 'footPopularAreas')
+                for item in footer_links_section:
+                    link_tags = item.select('a')
+                    links = [pt.get('href') for pt in link_tags]
+                    result_urls = result_urls + links
+
+        except Exception as e:
+            print('error', e)
+    return result_urls
+
+def check_property_exists():
+    all_properties = doc_ref.stream()
+    current_properties = []
+    for doc in all_properties:
+        current_properties.append(doc.to_dict())
+
+    return current_properties
+
+def scrap_data(url):
 
     try:
-        # Make the request to the URL to get the page content
-        propert_request = requests.get(PROPERTY_URL)
+        
+        links = scraper(url, 2)
 
-        # Pass the HTML text to an HTML tree-based structure
-        soup = BeautifulSoup(propert_request.content, 'html5lib')
-        properties_container1 = soup.find_all(
-            'div', class_='p24_promotedTile')
-        data_container1 = []
-        for element in properties_container1:
-            property_link = element.a['href']
-            property_agent = element.find('div', class_="p24_promotedImage").img['src']
-            property_price = element.find(
-                'div', class_='p24_price').text.strip().replace("   ", '')
-            property_location = element.find('span', class_='p24_location').text
-            property_bedrooms = element.find(
-                'span', class_='p24_featureDetails', title='Bedrooms').span.text
-            property_bathrooms = element.find(
-                'span', class_='p24_featureDetails', title='Bathrooms').span.text
-            property_images = element.find('img', class_='js_rollover_target')['src']
+        all_data = []
+        for link in links:
 
-            property_type = ''
-            if '/for-sale' in property_link:
-                property_type = 'for sale'
-            elif '/to-rent' in property_link:
-                property_type = 'for rent'
+            property_request = requests.get(url + link)
+            soup = BeautifulSoup(property_request.content, 'html5lib')
+            get_individual_property = soup.find_all('div', class_ = 'containerWrap')
+            data_dict = dict()
+            current_properties = check_property_exists()
+
+            if len(get_individual_property) == 0:
+                sleep(2)
             else:
-                property_type = 'land'
+                for element in get_individual_property:
 
-            data = {
-                'link': 'https://www.property24.com' + property_link,
-                'prop_type': property_type,
-                'agent': property_agent,
-                'images': property_images,
-                'price': property_price,
-                'location': property_location,
-                'bedrooms': property_bedrooms,
-                'bathrooms': property_bathrooms,
-            }
+                    id_section = uuid.uuid4().hex
+                    data_dict['uuid'] = id_section
+                    price_section = element.find('div', class_='pull-left sc_listingPrice primaryColor')
+                    if price_section is not None:
+                        price = element.find('div', class_='pull-left sc_listingPrice primaryColor').text.strip().replace("   ", '')
+                        data_dict['price'] = price
+                    
+                    price_range_dev = element.find('div', class_ = 'pull-left sc_listingPrice sc_listingPriceDevelopments primaryColor')
+                    if price_range_dev is not None:
+                        price_section = element.find('div', class_ = 'pull-left sc_listingPrice sc_listingPriceDevelopments primaryColor')
+                        price = price_section.find('span', class_ = None).text
+                        data_dict['price'] = price
 
-            data_container1.append(data)
+                    title_section = element.find('div', class_ = 'pull-left sc_listingAddress')
+                    if title_section is not None:
+                        title = element.find('div', class_ = 'pull-left sc_listingAddress').h1.text
+                        data_dict['title'] = title
 
-        properties_container2 = soup.find_all(
-            'div', class_='p24_regularTile')
-        data_container2 = []
-        for element in properties_container2:
-            property_link = element.a['href']
-            property_images = element.find('img', class_='js_rollover_target js_rollover_default js_P24_listingImage js_lazyLoadImage')['lazy-src']
-            property_price = element.find('span', class_='p24_price').text.strip().replace("   ", '')
-            property_bedrooms = element.find('span', class_ = 'p24_title').text[:2]
-            property_location = element.find('span', class_ = 'p24_location').text
-            property_bathrooms = element.find('span', class_='p24_featureDetails', title='Bathrooms').span.text
-            property_agent = element.find('span', class_ ='p24_content').img['src']
+                    address_section = element.find('div', class_ = 'pull-left sc_listingAddress')
+                    if address_section is not None:
+                        address = element.find('div', class_ = 'pull-left sc_listingAddress').p.text
+                        data_dict['address'] = address
+                        address_array = address.split(',')
+                        data_dict['district'] = address_array[-1]
 
-            property_type = ''
-            if '/for-sale' in property_link:
-                property_type = 'for sale'
-            elif '/to-rent' in property_link:
-                property_type = 'for rent'
-            else:
-                property_type = 'land'
+                    images_scraper = element.find_all('img', class_ = 'mainImage')
+                    if images_scraper:
+                        images = []
+                        for item in images_scraper:
+                            images.append(item['data-original'])
+                        data_dict['images'] = images
 
-            data = {
-                'link': 'https://www.property24.com' + property_link,
-                'prop_type': property_type,
-                'agent': property_agent,
-                'images': property_images,
-                'price': property_price,
-                'location': property_location,
-                'bedrooms': property_bedrooms,
-                'bathrooms': property_bathrooms,
-            }
+                    property_details_section = element.find('div', class_ = 'sc_listingDetailsText')
+                    if property_details_section is not None:
+                        property_details = element.find('div', class_ = 'sc_listingDetailsText').text
+                        data_dict['property_details'] = property_details
+                    
+                    get_property_info = element.find_all('div', class_ = 'detailItem sc_listingSummaryRow')
+                    
+                    if get_property_info:
+                        property_info = []
+                        for item in get_property_info:
+                            data = {
+                                item.find('div', class_ = 'detailItemName').text.strip().replace("   ", '') : item.find('div', class_ = 'detailItemValues').text.strip().replace("   ", '')
+                            }
+                            property_info.append(data)
+                        data_dict['property_info'] = property_info
+                all_data.append(data_dict)
 
-            data_container2.append(data)
+                if not any(item.get('title', None) == data_dict['title'] for item in current_properties):
+                    doc_ref.document().set(data_dict)
+                else:
+                    print('the property already exists')
 
-
-        for item in data_container1:
-            data_container2.append(item)
+        return []
+    
     except Exception as e:
-        print('Error when parsing data')
-        print(str(e))
-    finally:
-        return json.dumps(data_container2)
+        print('something happenned', e)
 
 if __name__ == '__main__':
 
@@ -174,11 +265,3 @@ if __name__ == '__main__':
         es = connect_el()
         sleep(2)
         scrapped_data = scrap_data(PROPERTY_URL)
-        if es is not None:
-            if create_index(es, 'properties'):
-                data = store_data(es, 'properties', scrapped_data)
-                print('Data Indexed successfully')
-    
-    es = connect_el()
-    if es is not None:
-        search_is_forsale = { '_source': ['link'], 'query': {'range': {'prop_type': {'gte': 'is forsale'}}}}
