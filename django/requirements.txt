@@ -3,7 +3,7 @@ cachetools==3.1.1
 certifi==2019.9.11
 chardet==3.0.4
 Click==7.0
-Django==2.2.6
+Django==2.2.24
 django-extensions==2.2.5
 django-grpc==0.1.8
 django-phone-field==1.8.0
